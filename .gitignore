@@ -1,0 +1,21 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+.env
+# Session storage state — live auth cookies, never commit
+/auth.json
+
+# Vendored app source (reference only)
+/whopperads-lms-angular-main/
+/whopperads-lms-node-development/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+# Assistant working notes
+/.workbuddy-ai/

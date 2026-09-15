@@ -1,0 +1,14 @@
+1. User without an country permission can access Country module ( when selecting permission if we select certain permission and save and again opens the permisson unwanted
+permission are also get selected try to use selecct all permission to reporduce)
+2. Role Eg : You have a role called  " Union Rep " when you try to create a role with "Union" or "Rep" will fail , same when editing 
+an existing Role name with "Union" or "Rep" will fail too - and they fail silenty without any error 
+3. If an admin edits a user and changes their email to an email that already belongs to another user, Prisma crashes with database error P2002, 
+returning an unhandled 500 Internal Server Error instead of a friendly "Email already in use" error.
+4. Rejects all international numbers (US, UK, UAE, etc.), numbers entered with +91 prefix, numbers with spaces/hyphens, or landline numbers. 
+If an agent has a company VoIP number or non-Indian number, it is rejected.
+5. The system allowes user to create and edit an lead source with the name of the deactivated lead source name . The system now has two active 
+lead sources with the exact same name. In lead creation dropdowns, filters, and conversion reports, agents will see two identical "Website" 
+options, splitting lead attribution.
+6. Project name should support ASCII letters and spaces . Eg : "DLF Phase-2"  → Rejected The user is blocked with the error: "Project name must contain only letters and spaces".
+7. Deactivated Masters (City, State, Country) appear in the "Add Lead" form: When creating a new lead, the Location dropdowns list deactivated/soft-deleted countries, states, 
+and cities instead of filtering for active-only records.
