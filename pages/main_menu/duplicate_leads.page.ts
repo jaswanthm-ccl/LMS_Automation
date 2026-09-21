@@ -1,87 +1,113 @@
-import { Locator, Page, expect } from "@playwright/test";
+import { Locator, Page, Response, expect } from '@playwright/test';
+
+export type DuplicateResolution = {
+    id: number;
+    status: 'ignored' | 'merged';
+    action: 'ignore' | 'merge';
+    reason: string;
+    source_lead_id: number;
+    target_lead_id: number;
+    copied_fields: string[];
+    source_archived: boolean;
+};
+
+const listPath = /^\/api\/v1\/duplicate-leads\/?$/;
+const actionPath = /^\/api\/v1\/duplicate-leads\/\d+\/action\/?$/;
 
 export class DuplicateLeadsPage {
-    readonly page: Page;
-    readonly searchInput: Locator;
+    constructor(readonly page: Page) {}
 
-    constructor(page: Page) {
-        this.page = page;
-        this.searchInput = page.getByRole('searchbox', { name: 'Search' });
+    private waitForApi(
+        method: string,
+        path: RegExp,
+        query: Record<string, string> = {},
+    ): Promise<Response> {
+        return this.page.waitForResponse((response) => {
+            const request = response.request();
+            const url = new URL(response.url());
+            return request.resourceType() === 'xhr' &&
+                request.method() === method &&
+                path.test(url.pathname) &&
+                Object.entries(query).every(([key, value]) => url.searchParams.get(key) === value);
+        });
     }
 
-    // 1. Navigation
-    async gotoDuplicateLeadsPage() {
+    private async successful(responsePromise: Promise<Response>, operation: string): Promise<Response> {
+        const response = await responsePromise;
+        expect(response.ok(), `${operation} API request should succeed`).toBeTruthy();
+        return response;
+    }
+
+    async gotoDuplicateLeadsPage(): Promise<void> {
+        const response = this.waitForApi('GET', listPath);
         await this.page.goto('/duplicate-leads');
-        await this.page.waitForLoadState('domcontentloaded');
-        const loadingIndicator = this.page.getByText('Loading', { exact: true });
-        if (await loadingIndicator.isVisible().catch(() => false)) {
-            await loadingIndicator.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+        await this.successful(response, 'Load Duplicate Leads');
+        await expect(this.page.getByRole('searchbox', { name: 'Search' })).toBeVisible();
+    }
+
+    async searchDuplicate(term: string): Promise<void> {
+        const search = this.page.getByRole('searchbox', { name: 'Search' });
+        if ((await search.inputValue()) === term) {
+            return;
         }
+
+        const response = this.waitForApi('GET', listPath, { search: term.toLowerCase() });
+        await search.fill(term);
+        await search.press('Enter');
+        await this.successful(response, 'Search Duplicate Leads');
     }
 
-    // 2. Search
-    async searchDuplicate(term: string) {
-        await this.searchInput.fill(term);
-        await this.searchInput.press('Enter');
-        await this.page.waitForTimeout(1000);
-    }
-
-    // 3. Row locator
     duplicateRow(identifier: string): Locator {
         return this.page.getByRole('row').filter({
-            has: this.page.getByRole('cell').filter({ hasText: identifier }),
+            has: this.page.getByRole('cell', { name: identifier, exact: true }),
         });
     }
 
-    // 4. Resolve Duplicate Action (Ignore or Merge)
-    async resolveDuplicate(identifier: string, options: { action: 'ignore' | 'merge'; reason: string }) {
+    async resolveDuplicate(
+        identifier: string,
+        action: 'ignore' | 'merge',
+        reason: string,
+    ): Promise<DuplicateResolution> {
         const row = this.duplicateRow(identifier);
-        
-        // Find action button on the row (Resolve / Action button or icon in action column)
-        const actionBtn = row.getByRole('button', { name: /resolve|action|review/i })
-            .or(row.getByTitle(/resolve|action|review/i))
-            .or(row.getByRole('cell').last().locator('button, [role="button"], .action-icon, i'))
-            .or(row.getByRole('button'))
-            .first();
-        await actionBtn.click();
+        await expect(row).toBeVisible();
+        const actionButton = row.getByRole('button');
+        await expect(actionButton).toHaveCount(1);
+        await actionButton.click();
 
-        const modal = this.page.getByRole('dialog', { name: 'Duplicate Lead Review' })
-            .or(this.page.locator('ccl-modal:visible, [role="dialog"]:visible, app-custom-model:visible, .modal:visible'))
-            .first();
-        await expect(modal).toBeVisible({ timeout: 5000 });
+        const dialog = this.page.getByRole('dialog', { name: 'Duplicate Lead Review' });
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole('textbox', { name: /reason/i }).fill(reason);
 
-        // 1. Fill Resolution Reason
-        const reasonInput = modal.getByRole('textbox', { name: /reason/i })
-            .or(modal.getByPlaceholder(/reason/i))
-            .or(modal.locator('textarea, input[formcontrolname="reason"]'));
-        await reasonInput.first().fill(options.reason);
-
-        // 2. Click Resolution Action (Merge or Ignore)
-        const actionBtnModal = modal.getByRole('button', { name: new RegExp(`^${options.action}$`, 'i') })
-            .or(modal.getByRole('button', { name: new RegExp(options.action, 'i') }))
-            .first();
-        await actionBtnModal.click();
-
-        // 3. The confirmation dialog opens asynchronously after the action.
-        const confirmDialog = this.page.getByRole('dialog', {
-            name: new RegExp(`Confirm ${options.action}`, 'i'),
+        await dialog.getByRole('button', { name: new RegExp(`^${action}$`, 'i') }).click();
+        const confirm = this.page.getByRole('dialog', {
+            name: new RegExp(`Confirm ${action}`, 'i'),
         });
-        await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
-        await confirmDialog.getByRole('button', { name: /^Yes$|^Confirm$/i }).click();
-        await expect(confirmDialog).toBeHidden();
+        await expect(confirm).toBeVisible();
+
+        const responsePromise = this.waitForApi('PATCH', actionPath);
+        await confirm.getByRole('button', { name: /^Yes$|^Confirm$/i }).click();
+        const response = await this.successful(responsePromise, `${action} Duplicate Lead`);
+        await expect(confirm).toBeHidden();
+
+        const body = await response.json();
+        return (body.data ?? body) as DuplicateResolution;
     }
 
-    // 5. Filter by Status (pending, merged, ignored)
-    async filterByStatus(status: 'pending' | 'merged' | 'ignored') {
-        const filterButton = this.page.getByRole('button', { name: /filters/i });
-        if (await filterButton.isVisible().catch(() => false)) {
-            await filterButton.click();
+    async filterByStatus(status: 'pending' | 'merged' | 'ignored'): Promise<void> {
+        const statusField = this.page
+            .locator('ccl-form-field-wrapper')
+            .filter({ hasText: /status/i });
+        if (!(await statusField.isVisible())) {
+            await this.page.getByRole('button', { name: /filters/i }).click();
+            await expect(statusField).toBeVisible();
         }
-        const statusWrapper = this.page.locator('ccl-form-field-wrapper').filter({ hasText: /status/i });
-        if (await statusWrapper.isVisible().catch(() => false)) {
-            await statusWrapper.locator('.ccl-dropdown__trigger').click();
-            await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`, 'i') }).first().click();
-            await this.page.waitForTimeout(500);
-        }
+
+        await statusField.locator('.ccl-dropdown__trigger').click();
+        const response = this.waitForApi('GET', listPath, { duplicate_status: status });
+        await this.page
+            .locator('.ccl-dropdown__option-label')
+            .filter({ hasText: new RegExp(`^${status}$`, 'i') })
+            .click();
+        await this.successful(response, `Filter ${status} Duplicate Leads`);
     }
 }

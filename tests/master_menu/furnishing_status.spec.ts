@@ -28,13 +28,11 @@ test.describe('Furnishing Status Module - CRUD & Lifecycle', () => {
     await expect(furnishingStatusPage.furnishingStatusRow(updatedFurnishingStatusName)).toBeVisible();
 
     await furnishingStatusPage.deactivateFurnishingStatus(updatedFurnishingStatusName);
-    await expect(page.getByText(/Furnishing status deactivated/i)).toBeVisible();
 
     await furnishingStatusPage.filterByStatus('Inactive');
     await expect(furnishingStatusPage.furnishingStatusRow(updatedFurnishingStatusName)).toBeVisible();
 
     await furnishingStatusPage.restoreFurnishingStatus(updatedFurnishingStatusName);
-    await expect(page.getByText(/Furnishing status (restored|activated) successfully/i)).toBeVisible();
 
     await furnishingStatusPage.filterByStatus('Active');
     await expect(furnishingStatusPage.furnishingStatusRow(updatedFurnishingStatusName)).toBeVisible();

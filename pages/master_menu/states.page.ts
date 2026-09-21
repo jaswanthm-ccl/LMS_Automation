@@ -16,31 +16,51 @@ export class StatesPage {
         this.stateCode = page.locator('ccl-input[formcontrolname="code"] input');
         this.country = page.locator('app-custom-model ccl-dropdown .ccl-dropdown__trigger');
         this.saveButton = page.getByRole('button', { name: 'Save' });
-        this.searchInput = page.getByPlaceholder('Search');
+        this.searchInput = page.getByRole('searchbox', { name: 'Search' });
     }
 
     async gotoStatesPage(){
         await this.page.goto('/states');
-    
+        await expect(this.searchInput).toBeVisible();
     }
 
     async searchState(name : string){
-        await this.page.getByRole('searchbox', { name: 'Search' }).fill(name);
-        await this.page.getByRole('searchbox', { name: 'Search' }).press('Enter');
-        await this.page.waitForTimeout(2000);
+        if (await this.searchInput.inputValue() === name) {
+            await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
+            await expect(this.stateRow(name)).toBeVisible();
+            return;
+        }
+        const searchResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/states\/?$/.test(url.pathname) &&
+                url.searchParams.get('search') === name.toLowerCase();
+        });
+        await this.searchInput.fill(name);
+        await this.searchInput.press('Enter');
+        expect((await searchResponse).ok(), 'State search should succeed').toBeTruthy();
+        await expect(this.stateRow(name)).toBeVisible();
     }
-    async editState(name : string){
-        await this.page.getByTitle('Edit').first().click();
-        await expect(this.stateName).not.toHaveValue('');
-        await this.stateName.fill(name);
+
+    stateRow(name: string): Locator {
+        return this.page.getByRole('row').filter({
+            has: this.page.getByRole('cell', { name, exact: true }),
+        });
+    }
+
+    async editState(currentName: string, updatedName: string){
+        const row = this.stateRow(currentName);
+        await expect(row).toBeVisible();
+        await row.getByTitle('Edit', { exact: true }).click();
+        await expect(this.stateName).toHaveValue(currentName);
+        await this.stateName.fill(updatedName);
         await this.saveButton.click();
     }
     
-    async deleteState(name?: string) {
-        if (name) {
-            await this.searchState(name);
-        }
-        await this.page.getByTitle('Deactivate').first().click();
+    async deleteState(name: string) {
+        await this.searchState(name);
+        const row = this.stateRow(name);
+        await row.getByTitle('Deactivate', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
     }
     async filterByStatus(status: 'Active' | 'Inactive') {
@@ -51,8 +71,14 @@ export class StatesPage {
             await statusWrapper.waitFor({ state: 'visible' });
         }
         await statusWrapper.locator('.ccl-dropdown__trigger').click();
+        const filterResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/states\/?$/.test(url.pathname) &&
+                url.searchParams.get('status') === status.toLowerCase();
+        });
         await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+        expect((await filterResponse).ok(), `Filter ${status} states should succeed`).toBeTruthy();
     }
     
     async addState(name : string , code : string , country : string){
@@ -67,7 +93,8 @@ export class StatesPage {
 
     async restoreState(name: string) {
         await this.searchState(name);
-        await this.page.getByTitle('Restore').first().click();
+        const row = this.stateRow(name);
+        await row.getByTitle('Restore', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
     }
         

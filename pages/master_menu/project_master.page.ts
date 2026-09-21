@@ -51,19 +51,89 @@ export class ProjectMasterPage {
     state = EXISTING_STATE,
     city = EXISTING_CITY,
     isDefault = false,
-  ): Promise<void> {
+  ): Promise<{ id: number }> {
     await this.addButton.click();
     await this.nameInput.fill(name);
     await this.selectDropdownOption(0, country);
     await this.selectDropdownOption(1, state);
     await this.selectDropdownOption(2, city);
     await this.isDefaultCheckbox.setChecked(isDefault);
+
+    const createResponsePromise = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/v1\/projects(?:\?|$)/.test(response.url()),
+    );
     await this.saveButton.click();
+    const createResponse = await createResponsePromise;
+    expect(createResponse.ok(), 'Project create request should succeed').toBeTruthy();
+    const body = await createResponse.json();
+    const id = Number(body?.data?.id);
+    expect(id, 'Created project should return an id').toBeGreaterThan(0);
+    return { id };
+  }
+
+  /** Map assignable agents onto a project (required before manual assign from queue). */
+  async mapAgents(projectId: number, agentIds: number[]): Promise<void> {
+    const apiBase = process.env.API_BASE_URL ?? '';
+    expect(apiBase, 'API_BASE_URL must be set').toBeTruthy();
+
+    const response = await this.page.context().request.post(
+      `${apiBase}/api/v1/projects/${projectId}/agents`,
+      {
+        data: { agent_ids: agentIds },
+        // Mapping is transactional, and a retry after a lost response returns
+        // the already-mapped result handled below.
+        maxRetries: 2,
+      },
+    );
+    const body = await response.text();
+    if (response.ok() || /already mapped/i.test(body)) {
+      return;
+    }
+    expect(
+      response.ok(),
+      `Project agent mapping failed: ${response.status()} ${body}`,
+    ).toBeTruthy();
+  }
+
+  async getFirstAssignableAgent(): Promise<{ id: number; label: string }> {
+    const apiBase = process.env.API_BASE_URL ?? '';
+    expect(apiBase, 'API_BASE_URL must be set').toBeTruthy();
+
+    const response = await this.page.context().request.get(
+      `${apiBase}/api/v1/lookups/agents`,
+    );
+    expect(
+      response.ok(),
+      `Agents lookup failed: ${response.status()} ${await response.text()}`,
+    ).toBeTruthy();
+
+    const body = await response.json();
+    const agents = Array.isArray(body?.data)
+      ? body.data
+      : Array.isArray(body?.data?.data)
+        ? body.data.data
+        : [];
+    expect(
+      agents.length,
+      `At least one assignable agent should exist. Response: ${JSON.stringify(body).slice(0, 300)}`,
+    ).toBeGreaterThan(0);
+
+    const agent = agents[0];
+    return { id: Number(agent.id), label: String(agent.label) };
   }
 
   async searchProject(name: string): Promise<void> {
+    const searchResponse = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/projects\?/.test(response.url()) &&
+        new URL(response.url()).searchParams.get('search') === name.toLowerCase(),
+    );
     await this.searchInput.fill(name);
     await this.searchInput.press('Enter');
+    expect((await searchResponse).ok(), 'Project search should succeed').toBeTruthy();
   }
 
   async viewProject(name: string): Promise<void> {

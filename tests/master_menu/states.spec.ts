@@ -30,7 +30,7 @@ test.describe('States Module - CRUD & Lifecycle', () => {
     await expect(page.getByRole('cell', { name: uniqueStateName })).toBeVisible();
 
     const updatedStateName = `${uniqueStateName} updated`;
-    await statesPage.editState(updatedStateName);
+    await statesPage.editState(uniqueStateName, updatedStateName);
     await expect(page.getByText('State updated successfully')).toBeVisible();
 
     await statesPage.deleteState(updatedStateName);

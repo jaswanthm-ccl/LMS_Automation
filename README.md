@@ -74,6 +74,12 @@ EMAIL=
 PASSWORD=
 INVALID_EMAIL=
 INVALID_PASSWORD=
+API_BASE_URL=
+AGENT_EMAIL=
+AGENT_PASSWORD=
+DOOCTI_PASSWORD=
+# Optional: select a named vendor queue instead of the first available queue
+DOOCTI_QUEUE_NAME=
 ```
 
 Useful variations:
@@ -82,6 +88,14 @@ Useful variations:
 npx playwright test --project=chromium --ui     # watch mode
 npx playwright test --grep "states"             # single module
 npx playwright show-report                      # open the last HTML report
+```
+
+The real Doocti call is isolated from normal regression runs and must be
+started intentionally. It calls the explicit phone constant in
+`agent_doocti_call_demo.spec.ts`:
+
+```
+npm run test:doocti
 ```
 
 Firefox and webkit are configured but not run by default. `npx playwright test`

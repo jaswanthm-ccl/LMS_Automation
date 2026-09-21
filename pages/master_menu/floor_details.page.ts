@@ -35,8 +35,15 @@ export class FloorDetailsPage {
   }
 
   async searchFloorDetail(name: string): Promise<void> {
+    const searchResponse = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/floor-details\?/.test(response.url()) &&
+        new URL(response.url()).searchParams.get('search') === name.toLowerCase(),
+    );
     await this.searchInput.fill(name);
     await this.searchInput.press('Enter');
+    expect((await searchResponse).ok(), 'Floor detail search should succeed').toBeTruthy();
   }
 
   async viewFloorDetail(name: string): Promise<void> {

@@ -30,7 +30,7 @@ test.describe('Cities Module - CRUD & Lifecycle', () => {
     await expect(page.getByRole('cell', { name: uniqueCityName })).toBeVisible();
 
     const updatedCityName = `${uniqueCityName} updated`;
-    await citiesPage.editCity(updatedCityName);
+    await citiesPage.editCity(uniqueCityName, updatedCityName);
     await expect(page.getByText('City updated successfully')).toBeVisible();
 
     await citiesPage.deleteCity(updatedCityName);

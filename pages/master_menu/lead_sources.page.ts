@@ -1,76 +1,194 @@
-import { Page, Locator, expect } from "@playwright/test";
+import { Locator, Page, Response, expect } from '@playwright/test';
+
+export type CreatedLeadSource = {
+    id: number;
+    detailsUrl: string;
+    deactivateUrl: string;
+};
+
+const leadSourcesPath = /^\/api\/v1\/lead-sources\/?$/;
+const leadSourcePath = /^\/api\/v1\/lead-sources\/\d+\/?$/;
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export class LeadSourcesPage {
-    readonly page: Page;
-    readonly addLeadSourceButton: Locator;
-    readonly leadSourceNameInput: Locator;
-    readonly leadSourceTypeSelect: Locator; 
-    readonly isdefaultCheckbox: Locator; 
-    readonly saveButton: Locator;
-    readonly searchInput: Locator;
+    constructor(readonly page: Page) {}
 
-    
-
-    constructor(page: Page) {
-        this.page = page;
-        this.addLeadSourceButton = page.getByRole('button', { name: '+ Add' });
-        this.leadSourceNameInput = page.getByRole('textbox', { name: 'Enter lead source name' });
-        this.leadSourceTypeSelect = page.getByText('Select lead source type')
-        this.isdefaultCheckbox = page.getByRole('checkbox', { name: 'Is Default ' });
-        this.saveButton = page.getByRole('button', { name: 'Save' });
-        this.searchInput = page.getByRole('searchbox', { name: 'Search' });
+    private get modal(): Locator {
+        return this.page.locator('app-custom-model').filter({
+            has: this.page.getByRole('textbox', { name: 'Enter lead source name' }),
+        });
     }
 
-    async gotoLeadSourcesPage() {
-        await this.page.goto('/lead-sources');
+    private get nameInput(): Locator {
+        return this.modal.getByRole('textbox', { name: 'Enter lead source name' });
     }
 
-    async addLeadSource(leadSourceName: string, leadSourceType = 'Upload', isDefault = false) {
-        await this.addLeadSourceButton.click();
-        await this.leadSourceNameInput.fill(leadSourceName);
-        await this.leadSourceTypeSelect.click();
-        await this.page.getByText(leadSourceType, { exact: true }).click();
-        await this.isdefaultCheckbox.setChecked(isDefault);
-        await this.saveButton.click();
-        
+    private get typeDropdown(): Locator {
+        return this.modal.locator(
+            'ccl-dropdown[placeholder="Select lead source type"] .ccl-dropdown__trigger',
+        );
     }
-    async searchLeadSource(leadSourceName: string) {
-        await this.searchInput.fill(leadSourceName);
-        await this.searchInput.press('Enter');
+
+    private get searchInput(): Locator {
+        return this.page.getByRole('searchbox', { name: 'Search' });
     }
+
+    private option(label: string): Locator {
+        return this.page
+            .locator('.ccl-dropdown__option:not(.ccl-dropdown__option--disabled)')
+            .filter({
+                has: this.page.locator('.ccl-dropdown__option-label', {
+                    hasText: new RegExp(`^${escapeRegExp(label)}$`),
+                }),
+            });
+    }
+
+    private waitForApi(
+        method: string,
+        path: RegExp,
+        query: Record<string, string> = {},
+    ): Promise<Response> {
+        return this.page.waitForResponse((response) => {
+            const request = response.request();
+            const url = new URL(response.url());
+
+            return request.resourceType() === 'xhr' &&
+                request.method() === method &&
+                path.test(url.pathname) &&
+                Object.entries(query).every(
+                    ([key, value]) => url.searchParams.get(key) === value,
+                );
+        });
+    }
+
+    private async expectSuccessful(
+        responsePromise: Promise<Response>,
+        operation: string,
+    ): Promise<Response> {
+        const response = await responsePromise;
+        expect(response.ok(), `${operation} API request should succeed`).toBeTruthy();
+        return response;
+    }
+
+    private async openRowAction(
+        name: string,
+        action: 'View' | 'Edit' | 'Deactivate' | 'Restore',
+    ): Promise<void> {
+        const row = this.leadSourceRow(name);
+        await expect(row).toBeVisible();
+        await row.getByTitle(action, { exact: true }).click();
+    }
+
     leadSourceRow(name: string): Locator {
         return this.page.getByRole('row').filter({
             has: this.page.getByRole('cell', { name, exact: true }),
         });
     }
-    async viewLeadSource(leadSourceName: string) {
-        await this.leadSourceRow(leadSourceName).getByTitle('View', { exact: true }).click();
+
+    async gotoLeadSourcesPage(): Promise<void> {
+        const response = this.waitForApi('GET', leadSourcesPath);
+        await this.page.goto('/lead-sources');
+        await this.expectSuccessful(response, 'Load Lead Sources');
+        await expect(this.searchInput).toBeVisible();
     }
-    async editLeadSource(name: string, updatedName: string, isDefault = false) {
-        await this.leadSourceRow(name).getByTitle('Edit', { exact: true }).click();
-        // Wait for the existing record to load before changing its fields.
-        await expect(this.leadSourceNameInput).toHaveValue(name);
-        await this.leadSourceNameInput.fill(updatedName);
-        await this.isdefaultCheckbox.setChecked(isDefault);
-        await this.saveButton.click();
+
+    async searchLeadSource(name: string): Promise<void> {
+        const response = this.waitForApi('GET', leadSourcesPath, {
+            search: name.toLowerCase(),
+        });
+        await this.searchInput.fill(name);
+        await this.searchInput.press('Enter');
+        await this.expectSuccessful(response, 'Search Lead Sources');
     }
-    async deactivateLeadSource(name: string) {
-        await this.leadSourceRow(name).getByTitle('Deactivate', { exact: true }).click();
-        await this.page.getByRole('button', { name: 'Yes', exact: true }).click();
-    }
-    async restoreLeadSource(name: string) {
-        await this.leadSourceRow(name).getByTitle('Restore', { exact: true }).click();
-        await this.page.getByRole('button', { name: 'Yes' }).click();
-    }
-    async filterByStatus(status: 'Active' | 'Inactive') {
-        const filters = this.page.getByRole('button', { name: /Filters/ });
-        const statusWrapper = this.page.locator('ccl-form-field-wrapper').filter({ hasText: 'Status' });
-        if (!(await statusWrapper.isVisible())) {
-            await filters.click();
-            await statusWrapper.waitFor({ state: 'visible' });
+
+    async filterByStatus(status: 'Active' | 'Inactive'): Promise<void> {
+        const statusField = this.page
+            .locator('ccl-form-field-wrapper')
+            .filter({ hasText: /Status/ });
+
+        if (!(await statusField.isVisible())) {
+            await this.page.getByRole('button', { name: /Filters/ }).click();
+            await expect(statusField).toBeVisible();
         }
-        await statusWrapper.locator('.ccl-dropdown__trigger').click();
-        await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+
+        await statusField.locator('.ccl-dropdown__trigger').click();
+        const response = this.waitForApi('GET', leadSourcesPath, {
+            status: status.toLowerCase(),
+        });
+        await this.option(status).click();
+        await this.expectSuccessful(response, `Filter ${status} Lead Sources`);
+    }
+
+    async addLeadSource(
+        name: string,
+        type = 'Upload',
+        isDefault = false,
+    ): Promise<CreatedLeadSource> {
+        await this.page
+            .locator('app-custom-list-table')
+            .getByRole('button', { name: /\+\s*Add/ })
+            .click();
+        await expect(this.nameInput).toBeVisible();
+
+        await this.nameInput.fill(name);
+        await this.typeDropdown.click();
+        await this.option(type).click();
+        await this.modal.getByRole('checkbox', { name: /is default/i }).setChecked(isDefault);
+
+        const responsePromise = this.waitForApi('POST', leadSourcesPath);
+        await this.modal.getByRole('button', { name: 'Save', exact: true }).click();
+        const response = await this.expectSuccessful(responsePromise, 'Create Lead Source');
+
+        const body = await response.json();
+        const id = Number(body?.data?.id ?? body?.id);
+        expect(Number.isInteger(id), 'Create response should include an ID').toBeTruthy();
+
+        const createUrl = new URL(response.url());
+        const detailsUrl = `${createUrl.origin}${createUrl.pathname.replace(/\/$/, '')}/${id}`;
+        return { id, detailsUrl, deactivateUrl: `${detailsUrl}/deactivate` };
+    }
+
+    async viewLeadSource(name: string): Promise<void> {
+        const response = this.waitForApi('GET', leadSourcePath);
+        await this.openRowAction(name, 'View');
+        await this.expectSuccessful(response, 'View Lead Source');
+    }
+
+    async editLeadSource(name: string, updatedName: string, isDefault = false): Promise<void> {
+        await this.openRowAction(name, 'Edit');
+        await expect(this.nameInput).toHaveValue(name);
+        await this.nameInput.fill(updatedName);
+        await this.modal.getByRole('checkbox', { name: /is default/i }).setChecked(isDefault);
+
+        const response = this.waitForApi('PUT', leadSourcePath);
+        await this.modal.getByRole('button', { name: 'Save', exact: true }).click();
+        await this.expectSuccessful(response, 'Update Lead Source');
+    }
+
+    async deactivateLeadSource(name: string): Promise<void> {
+        await this.openRowAction(name, 'Deactivate');
+        const response = this.waitForApi(
+            'PATCH',
+            /^\/api\/v1\/lead-sources\/\d+\/deactivate\/?$/,
+        );
+        await this.page.locator('.delete-modal')
+            .getByRole('button', { name: 'Yes', exact: true })
+            .click();
+        await this.expectSuccessful(response, 'Deactivate Lead Source');
+    }
+
+    async restoreLeadSource(name: string): Promise<void> {
+        await this.openRowAction(name, 'Restore');
+        const response = this.waitForApi(
+            'PATCH',
+            /^\/api\/v1\/lead-sources\/\d+\/activate\/?$/,
+        );
+        await this.page.locator('.delete-modal')
+            .getByRole('button', { name: 'Yes', exact: true })
+            .click();
+        await this.expectSuccessful(response, 'Restore Lead Source');
     }
 }

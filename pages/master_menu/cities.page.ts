@@ -20,17 +20,31 @@ export class CitiesPage {
         this.stateDropdown = modal.locator('ccl-dropdown .ccl-dropdown__trigger').nth(1);
         
         this.saveButton = page.getByRole('button', { name: 'Save' });
-        this.searchInput = page.getByPlaceholder('Search');
+        this.searchInput = page.getByRole('searchbox', { name: 'Search' });
     }
 
     async gotoCitiesPage() {
         await this.page.goto('/cities');
+        await expect(this.searchInput).toBeVisible();
     }
 
     async searchCity(name: string) {
-        await this.page.getByRole('searchbox', { name: 'Search' }).fill(name);
-        await this.page.getByRole('searchbox', { name: 'Search' }).press('Enter');
-        await this.page.waitForTimeout(2000);
+        const searchResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/cities\/?$/.test(url.pathname) &&
+                url.searchParams.get('search') === name.toLowerCase();
+        });
+        await this.searchInput.fill(name);
+        await this.searchInput.press('Enter');
+        expect((await searchResponse).ok(), 'City search should succeed').toBeTruthy();
+        await expect(this.cityRow(name)).toBeVisible();
+    }
+
+    cityRow(name: string): Locator {
+        return this.page.getByRole('row').filter({
+            has: this.page.getByRole('cell', { name, exact: true }),
+        });
     }
 
     async addCity(name: string, countryName?: string, stateName?: string) {
@@ -48,7 +62,6 @@ export class CitiesPage {
         }
 
         // 2. Select State dynamically (or by name if supplied)
-        await this.page.waitForTimeout(500);
         await this.stateDropdown.click();
         if (stateName) {
             await this.page.locator('.ccl-dropdown__search-input').first().fill(stateName);
@@ -61,10 +74,10 @@ export class CitiesPage {
         await this.saveButton.click();
     }
 
-    async editCity(name: string) {
-        await this.page.getByTitle('Edit').first().click();
-        await expect(this.cityName).not.toHaveValue('');
-        await this.cityName.fill(name);
+    async editCity(currentName: string, updatedName: string) {
+        await this.cityRow(currentName).getByTitle('Edit', { exact: true }).click();
+        await expect(this.cityName).toHaveValue(currentName);
+        await this.cityName.fill(updatedName);
         await this.saveButton.click();
     }
 
@@ -72,8 +85,10 @@ export class CitiesPage {
         if (name) {
             await this.searchCity(name);
         }
-        await this.page.getByTitle('Deactivate').first().click();
+        const row = this.cityRow(name!);
+        await row.getByTitle('Deactivate', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
+        await expect(row).toBeHidden();
     }
 
     async filterByStatus(status: 'Active' | 'Inactive') {
@@ -85,15 +100,17 @@ export class CitiesPage {
         }
         await statusWrapper.locator('.ccl-dropdown__trigger').click();
         await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' });
     }
 
     async restoreCity(name?: string) {
         if (name) {
             await this.searchCity(name);
         }
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
-        await this.page.getByTitle('Restore').first().click();
+        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' });
+        const row = this.cityRow(name!);
+        await row.getByTitle('Restore', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
+        await expect(row).toBeHidden();
     }
 }

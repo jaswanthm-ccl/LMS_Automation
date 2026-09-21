@@ -30,9 +30,21 @@ export class UsersPage {
 
     // 2. Search User
     async searchUser(term: string) {
+        if (await this.searchInput.inputValue() === term) {
+            await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
+            await expect(this.userRow(term)).toBeVisible();
+            return;
+        }
+        const searchResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/users\/?$/.test(url.pathname) &&
+                url.searchParams.get('search') === term.toLowerCase();
+        });
         await this.searchInput.fill(term);
         await this.searchInput.press('Enter');
-        await this.page.waitForTimeout(1000);
+        expect((await searchResponse).ok(), 'User search should succeed').toBeTruthy();
+        await expect(this.userRow(term)).toBeVisible();
     }
 
     // 3. Add User
@@ -44,7 +56,7 @@ export class UsersPage {
         phone: string;
         gender?: string;
         roleName?: string;
-    }) {
+    }): Promise<{ id: number }> {
         await this.addUserButton.click();
         await this.firstNameInput.fill(options.firstName);
         await this.lastNameInput.fill(options.lastName);
@@ -68,7 +80,22 @@ export class UsersPage {
             await this.page.locator('.ccl-dropdown__option').filter({ hasText: options.roleName }).first().click();
         }
 
+        const responsePromise = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().resourceType() === 'xhr' &&
+                response.request().method() === 'POST' &&
+                /^\/api\/v1\/users\/?$/.test(url.pathname);
+        });
         await this.saveButton.click();
+        const response = await responsePromise;
+        expect(
+            response.ok(),
+            `User create failed: ${response.status()} ${await response.text()}`,
+        ).toBeTruthy();
+        const body = await response.json();
+        const id = Number(body?.data?.id);
+        expect(id, 'Created user should return an id').toBeGreaterThan(0);
+        return { id };
     }
 
     userRow(name: string): Locator {
@@ -78,16 +105,12 @@ export class UsersPage {
     }
 
     // 4. Edit User
-    async editUser(nameOrNewFirstName: string, newFirstName?: string) {
-        if (newFirstName) {
-            await this.userRow(nameOrNewFirstName).getByTitle('Edit', { exact: true }).click();
-            await expect(this.firstNameInput).not.toHaveValue('');
-            await this.firstNameInput.fill(newFirstName);
-        } else {
-            await this.page.getByTitle('Edit').first().click();
-            await expect(this.firstNameInput).not.toHaveValue('');
-            await this.firstNameInput.fill(nameOrNewFirstName);
-        }
+    async editUser(currentName: string, newFirstName: string) {
+        const row = this.userRow(currentName);
+        await expect(row).toBeVisible();
+        await row.getByTitle('Edit', { exact: true }).click();
+        await expect(this.firstNameInput).not.toHaveValue('');
+        await this.firstNameInput.fill(newFirstName);
         await this.saveButton.click();
     }
 
@@ -99,12 +122,10 @@ export class UsersPage {
     }
 
     // 6. Delete / Deactivate User
-    async deleteUser(name?: string) {
-        if (name) {
-            await this.userRow(name).getByTitle('Deactivate', { exact: true }).click();
-        } else {
-            await this.page.getByTitle('Deactivate').first().click();
-        }
+    async deleteUser(name: string) {
+        const row = this.userRow(name);
+        await expect(row).toBeVisible();
+        await row.getByTitle('Deactivate', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
     }
 }

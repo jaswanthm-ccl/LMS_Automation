@@ -34,12 +34,31 @@ export class CountriesPage {
 
         // Modal Save Button
         this.saveButton = page.getByRole('button', { name: 'Save' });
-        this.searchInput = page.getByPlaceholder('Search');
+        this.searchInput = page.getByRole('searchbox', { name: 'Search' });
 
+    }
+
+    countryRow(name: string) : Locator{
+        return this.page.getByRole('row').filter({
+            has: this.page.getByRole('cell' , {
+                name,
+                exact: true,
+            }),
+        });
+    }
+
+    private async hasCountryRow(name: string): Promise<boolean> {
+        try {
+            await this.countryRow(name).waitFor({ state: 'visible', timeout: 2000 });
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     async gotoCountriesPage(){
         await this.page.goto('/countries');
+        await expect(this.searchInput).toBeVisible();
     }
         
 
@@ -67,31 +86,45 @@ export class CountriesPage {
     }
 
     async searchCountry(name : string){
-        await this.page.getByRole('searchbox', { name: 'Search' }).fill(name);
-        await this.page.getByRole('searchbox', { name: 'Search' }).press('Enter');
-        await this.page.waitForTimeout(2000);
+        if (await this.searchInput.inputValue() === name) {
+            await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
+            return;
+        }
+        const searchResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/countries\/?$/.test(url.pathname) &&
+                url.searchParams.get('search') === name.toLowerCase();
+        });
+        await this.searchInput.fill(name);
+        await this.searchInput.press('Enter');
+        expect((await searchResponse).ok(), 'Country search should succeed').toBeTruthy();
+        await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
     }
 
     async viewCountry(name : string) {
-        await this.page.getByTitle('View').first().click();
-
-        
+        const row = this.countryRow(name);
+        await expect(row).toBeVisible();
+        await row.getByTitle('View', { exact: true }).click();
     } 
 
-    async editCountry(name : string){
-
-        await this.page.getByTitle('Edit').first().click();
-        await expect(this.countryName).not.toHaveValue('');
-        await this.countryName.fill(name);
+    async editCountry(name : string , newName : string){
+        const row = this.countryRow(name);
+        await row.getByTitle('Edit', { exact: true }).click();
+        await this.countryName.fill(newName);
         await this.saveButton.click();
+
+        await expect(this.page.getByText('Country updated successfully')).toBeVisible();
+        await this.searchCountry(newName);
+        await expect(this.countryRow(newName)).toBeVisible();
         
     }
 
-        async deleteCountry(name?: string) {
-        if (name) {
-            await this.searchCountry(name);
-        }
-        await this.page.getByTitle('Deactivate').first().click();
+    async deleteCountry(name: string) {
+        await this.searchCountry(name);
+        const row = this.countryRow(name);
+        await expect(row).toBeVisible();
+        await row.getByTitle('Deactivate', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
     }
 
@@ -103,16 +136,22 @@ export class CountriesPage {
             await statusWrapper.waitFor({ state: 'visible' });
         }
         await statusWrapper.locator('.ccl-dropdown__trigger').click();
+        const filterResponse = this.page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' &&
+                /\/api\/v1\/countries\/?$/.test(url.pathname) &&
+                url.searchParams.get('status') === status.toLowerCase();
+        });
         await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+        expect((await filterResponse).ok(), `Filter ${status} countries should succeed`).toBeTruthy();
+        await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
     }
 
-    async restoreCountry(name?: string) {
-        if (name) {
-            await this.searchCountry(name);
-        }
-        await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
-        await this.page.getByTitle('Restore').first().click();
+    async restoreCountry(name: string) {
+        await this.searchCountry(name);
+        const row = this.countryRow(name);
+        await expect(row).toBeVisible();
+        await row.getByTitle('Restore', { exact: true }).click();
         await this.page.getByRole('button', { name: 'Yes' }).click();
     }
 
@@ -133,15 +172,15 @@ export class CountriesPage {
         await this.gotoCountriesPage();
         await this.searchCountry(name);
 
-        const activeRow = this.page.getByRole('cell', { name, exact: true });
-        if (await activeRow.isVisible().catch(() => false)) {
+        const activeRow = this.countryRow(name);
+        if (await this.hasCountryRow(name)) {
             return;
         }
 
         // Maybe soft-deleted / inactive
         await this.filterByStatus('Inactive');
         await this.searchCountry(name);
-        if (await activeRow.isVisible().catch(() => false)) {
+        if (await this.hasCountryRow(name)) {
             await this.restoreCountry(name);
             await expect(this.page.getByText('Country restored successfully')).toBeVisible();
             await this.filterByStatus('Active');

@@ -35,8 +35,15 @@ export class PropertyPurposePage {
   }
 
   async searchPropertyPurpose(name: string): Promise<void> {
+    const searchResponse = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/property-purposes\?/.test(response.url()) &&
+        new URL(response.url()).searchParams.get('search') === name.toLowerCase(),
+    );
     await this.searchInput.fill(name);
     await this.searchInput.press('Enter');
+    expect((await searchResponse).ok(), 'Property purpose search should succeed').toBeTruthy();
   }
 
   async viewPropertyPurpose(name: string): Promise<void> {

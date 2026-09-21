@@ -32,8 +32,15 @@ export class PropertyConfigurationsPage {
   }
 
   async searchConfiguration(name: string): Promise<void> {
+    const searchResponse = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/property-configurations\?/.test(response.url()) &&
+        new URL(response.url()).searchParams.get('search') === name.toLowerCase(),
+    );
     await this.searchInput.fill(name);
     await this.searchInput.press('Enter');
+    expect((await searchResponse).ok(), 'Property configuration search should succeed').toBeTruthy();
   }
 
   async viewConfiguration(name: string): Promise<void> {

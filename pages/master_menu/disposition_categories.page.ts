@@ -35,8 +35,15 @@ export class DispositionCategoriesPage {
   }
 
   async searchCategory(name: string): Promise<void> {
+    const searchResponse = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/api\/v1\/disposition-categories\?/.test(response.url()) &&
+        new URL(response.url()).searchParams.get('search') === name.toLowerCase(),
+    );
     await this.searchInput.fill(name);
     await this.searchInput.press('Enter');
+    expect((await searchResponse).ok(), 'Disposition category search should succeed').toBeTruthy();
   }
 
   async viewCategory(name: string): Promise<void> {

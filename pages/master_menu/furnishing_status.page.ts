@@ -52,13 +52,17 @@ export class FurnishingStatusPage {
   }
 
   async deactivateFurnishingStatus(name: string): Promise<void> {
-    await this.furnishingStatusRow(name).getByTitle('Deactivate', { exact: true }).click();
+    const row = this.furnishingStatusRow(name);
+    await row.getByTitle('Deactivate', { exact: true }).click();
     await this.page.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(row).toBeHidden();
   }
 
   async restoreFurnishingStatus(name: string): Promise<void> {
-    await this.furnishingStatusRow(name).getByTitle('Restore', { exact: true }).click();
+    const row = this.furnishingStatusRow(name);
+    await row.getByTitle('Restore', { exact: true }).click();
     await this.page.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(row).toBeHidden();
   }
 
   async filterByStatus(status: 'Active' | 'Inactive'): Promise<void> {
@@ -70,6 +74,6 @@ export class FurnishingStatusPage {
     }
     await statusWrapper.locator('.ccl-dropdown__trigger').click();
     await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-    await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+    await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' });
   }
 }

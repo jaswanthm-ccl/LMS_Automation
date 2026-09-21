@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": { "test": "playwright test --project=chromium"},
+  "scripts": {
+    "test": "playwright test --project=chromium",
+    "test:doocti": "playwright test --config=playwright.doocti.config.ts --project=doocti-real"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

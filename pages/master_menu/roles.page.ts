@@ -88,6 +88,7 @@ export class RolesPage {
         await this.searchInput.fill(name);
         await this.searchInput.press('Enter');
         await this.expectSuccessfulApi(searchResponse, 'Search Roles');
+        await expect(this.roleRow(name)).toBeVisible();
     }
 
     roleRow(name: string): Locator {
