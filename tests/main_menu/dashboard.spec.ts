@@ -22,6 +22,26 @@ test.describe('Dashboard Module', () => {
     await expect(dashboardPage.hourlyProductivitySection).toBeVisible();
   });
 
+  test('should render every KPI value returned by the dashboard API', async ({ page }) => {
+    const dashboardPage = new DashboardPage(page);
+
+    const response = await dashboardPage.gotoDashboard();
+    const body = await response.json();
+
+    for (const [key, metric] of Object.entries(body.data.kpis) as Array<[string, {
+      label: string;
+      value: number;
+      previous_value: number;
+      change_percent: number | null;
+      trend: 'up' | 'down' | 'flat';
+    }]>) {
+      expect(metric.previous_value).toEqual(expect.any(Number));
+      expect(metric.change_percent === null || typeof metric.change_percent === 'number').toBeTruthy();
+      expect(['up', 'down', 'flat']).toContain(metric.trend);
+      await expect(dashboardPage.kpiCard(key)).toContainText(String(metric.value));
+    }
+  });
+
   test('should show the available dashboard filters', async ({ page }) => {
     const dashboardPage = new DashboardPage(page);
 
@@ -34,6 +54,26 @@ test.describe('Dashboard Module', () => {
     await expect(page.getByText('Agent', { exact: true })).toBeVisible();
     await expect(page.getByText('Lead Source', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Reset' })).toBeVisible();
+  });
+
+  test('should apply and reset a dashboard date range', async ({ page }) => {
+    const dashboardPage = new DashboardPage(page);
+
+    await dashboardPage.gotoDashboard();
+    await dashboardPage.openFilters();
+
+    const filteredResponse = await dashboardPage.applyDateRange('01-01-2026', '02-01-2026');
+    const filteredUrl = new URL(filteredResponse.url());
+    expect(filteredUrl.searchParams.get('date_from')).toBe('2026-01-01');
+    expect(filteredUrl.searchParams.get('date_to')).toBe('2026-01-02');
+
+    const resetResponse = await dashboardPage.resetFilters();
+    const resetUrl = new URL(resetResponse.url());
+    expect(resetUrl.searchParams.has('date_from')).toBeFalsy();
+    expect(resetUrl.searchParams.has('date_to')).toBeFalsy();
+    await dashboardPage.openFilters();
+    await expect(dashboardPage.startDateInput).toHaveValue('');
+    await expect(dashboardPage.endDateInput).toHaveValue('');
   });
 
   test('should refresh the dashboard and open the daily call report', async ({ page }) => {

@@ -8,6 +8,8 @@ export class DashboardPage {
   readonly conversionFunnelSection: Locator;
   readonly liveOperationsSection: Locator;
   readonly hourlyProductivitySection: Locator;
+  readonly startDateInput: Locator;
+  readonly endDateInput: Locator;
 
   constructor(readonly page: Page) {
     this.heading = page.getByRole('heading', { name: 'Dashboard', exact: true });
@@ -19,6 +21,12 @@ export class DashboardPage {
     this.hourlyProductivitySection = page.getByText('Hourly Productivity Heatmap', {
       exact: true,
     });
+    this.startDateInput = this.filterField('Start Date').locator('input[type="text"]');
+    this.endDateInput = this.filterField('End Date').locator('input[type="text"]');
+  }
+
+  private filterField(label: string): Locator {
+    return this.page.locator('ccl-form-field-wrapper').filter({ hasText: label });
   }
 
   private waitForSummary(): Promise<Response> {
@@ -47,8 +55,41 @@ export class DashboardPage {
   }
 
   async openFilters(): Promise<void> {
-    await this.page.getByRole('button', { name: /Filters/ }).click();
-    await expect(this.page.getByText('Project', { exact: true })).toBeVisible();
+    if (!(await this.startDateInput.isVisible())) {
+      await this.page.getByRole('button', { name: /Filters/ }).click();
+    }
+    await expect(this.startDateInput).toBeVisible();
+  }
+
+  kpiCard(key: string): Locator {
+    const labels: Record<string, string> = {
+      total_leads: 'Total Leads',
+      connected_leads: 'Connected Leads',
+      overall_conversion_rate: 'Conversion Rate',
+      follow_ups: 'Follow Ups',
+      overdue_follow_ups: 'Overdue Follow Ups',
+    };
+    const label = labels[key];
+    if (!label) {
+      throw new Error(`Unsupported dashboard KPI: ${key}`);
+    }
+    return this.page.getByText(label, { exact: true }).locator('../..');
+  }
+
+  async applyDateRange(startDate: string, endDate: string): Promise<Response> {
+    await this.startDateInput.fill(startDate);
+    await expect(this.endDateInput).toBeEnabled();
+
+    const response = this.waitForSummary();
+    await this.endDateInput.fill(endDate);
+    await this.endDateInput.press('Tab');
+    return this.expectSuccessful(response);
+  }
+
+  async resetFilters(): Promise<Response> {
+    const response = this.waitForSummary();
+    await this.page.getByRole('button', { name: /Reset/ }).click();
+    return this.expectSuccessful(response);
   }
 
   async refresh(): Promise<Response> {
