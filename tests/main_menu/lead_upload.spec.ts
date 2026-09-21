@@ -2,6 +2,26 @@ import { test, expect } from '../../fixtures/lead-flow.fixture';
 import fs from 'fs';
 import { LeadUploadPage } from '../../pages/main_menu/lead_upload.page';
 import { getRandomLetters, getRandomNumber } from '../../utils/common';
+import type { APIRequestContext, APIResponse } from '@playwright/test';
+
+async function getWithTransportRetry(
+  request: APIRequestContext,
+  url: string,
+  attempts = 2,
+): Promise<APIResponse> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await request.get(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
 
 test.describe('Lead Upload', () => {
   test.describe.configure({ mode: 'serial' });
@@ -27,7 +47,10 @@ test.describe('Lead Upload', () => {
     const uploadPage = new LeadUploadPage(page);
     const apiBase = process.env.API_BASE_URL!;
 
-    const sourcesRes = await page.context().request.get(`${apiBase}/api/v1/lookups/lead-sources`);
+    const sourcesRes = await getWithTransportRetry(
+      page.context().request,
+      `${apiBase}/api/v1/lookups/lead-sources`,
+    );
     expect(sourcesRes.ok()).toBeTruthy();
     const sourcesBody = await sourcesRes.json();
     const sources = Array.isArray(sourcesBody?.data)

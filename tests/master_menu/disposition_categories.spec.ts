@@ -19,7 +19,6 @@ test.describe('Disposition Categories Module', () => {
 
     await dispositionCategoriesPage.gotoDispositionCategoriesPage();
     await dispositionCategoriesPage.addCategory(categoryName, subDispositionName);
-    await expect(page.getByText('Disposition category created successfully')).toBeVisible();
 
     await dispositionCategoriesPage.searchCategory(categoryName);
     await expect(dispositionCategoriesPage.categoryRow(categoryName)).toBeVisible();
@@ -30,12 +29,10 @@ test.describe('Disposition Categories Module', () => {
     await viewDialog.getByRole('button', { name: 'Close modal' }).click();
 
     await dispositionCategoriesPage.editCategory(categoryName, updatedCategoryName);
-    await expect(page.getByText('Disposition category updated successfully')).toBeVisible();
 
     await dispositionCategoriesPage.searchCategory(updatedCategoryName);
     await expect(dispositionCategoriesPage.categoryRow(updatedCategoryName)).toBeVisible();
     await dispositionCategoriesPage.deactivateCategory(updatedCategoryName);
-    await expect(page.getByText('Disposition category deactivated successfully')).toBeVisible();
 
     await dispositionCategoriesPage.filterByStatus('Inactive');
     await expect(dispositionCategoriesPage.categoryRow(updatedCategoryName)).toBeVisible();

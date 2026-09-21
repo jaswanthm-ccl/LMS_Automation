@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type Response } from '@playwright/test';
 
 export class DispositionCategoriesPage {
   readonly page: Page;
@@ -31,7 +31,9 @@ export class DispositionCategoriesPage {
     await this.addButton.click();
     await this.nameInput.fill(name);
     await this.subDispositionInput.fill(subDispositionName);
+    const response = this.waitForMutation('POST', /\/api\/v1\/disposition-categories\/?$/);
     await this.saveButton.click();
+    await this.expectSuccessful(response, 'Create disposition category');
   }
 
   async searchCategory(name: string): Promise<void> {
@@ -46,6 +48,17 @@ export class DispositionCategoriesPage {
     expect((await searchResponse).ok(), 'Disposition category search should succeed').toBeTruthy();
   }
 
+  private waitForMutation(method: 'POST' | 'PUT' | 'PATCH', path: RegExp): Promise<Response> {
+    return this.page.waitForResponse((response) =>
+      response.request().method() === method && path.test(new URL(response.url()).pathname),
+    );
+  }
+
+  private async expectSuccessful(responsePromise: Promise<Response>, operation: string): Promise<void> {
+    const response = await responsePromise;
+    expect(response.ok(), `${operation} API request should succeed`).toBeTruthy();
+  }
+
   async viewCategory(name: string): Promise<void> {
     await this.categoryRow(name).getByTitle('View', { exact: true }).click();
   }
@@ -54,17 +67,29 @@ export class DispositionCategoriesPage {
     await this.categoryRow(name).getByTitle('Edit', { exact: true }).click();
     await expect(this.nameInput).toHaveValue(name);
     await this.nameInput.fill(updatedName);
+    const response = this.waitForMutation('PUT', /\/api\/v1\/disposition-categories\/\d+\/?$/);
     await this.saveButton.click();
+    await this.expectSuccessful(response, 'Update disposition category');
   }
 
   async deactivateCategory(name: string): Promise<void> {
     await this.categoryRow(name).getByTitle('Deactivate', { exact: true }).click();
+    const response = this.waitForMutation(
+      'PATCH',
+      /\/api\/v1\/disposition-categories\/\d+\/deactivate\/?$/,
+    );
     await this.page.getByRole('button', { name: 'Yes', exact: true }).click();
+    await this.expectSuccessful(response, 'Deactivate disposition category');
   }
 
   async restoreCategory(name: string): Promise<void> {
     await this.categoryRow(name).getByTitle('Restore', { exact: true }).click();
+    const response = this.waitForMutation(
+      'PATCH',
+      /\/api\/v1\/disposition-categories\/\d+\/activate\/?$/,
+    );
     await this.page.getByRole('button', { name: 'Yes', exact: true }).click();
+    await this.expectSuccessful(response, 'Restore disposition category');
   }
 
   async filterByStatus(status: 'Active' | 'Inactive'): Promise<void> {
@@ -75,7 +100,11 @@ export class DispositionCategoriesPage {
       await statusWrapper.waitFor({ state: 'visible' });
     }
     await statusWrapper.locator('.ccl-dropdown__trigger').click();
+    const response = this.page.waitForResponse((candidate) =>
+      candidate.request().method() === 'GET' &&
+      /\/api\/v1\/disposition-categories\/?$/.test(new URL(candidate.url()).pathname),
+    );
     await this.page.locator('.ccl-dropdown__option').filter({ hasText: new RegExp(`^${status}$`) }).click();
-    await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' }).catch(() => {});
+    expect((await response).ok(), `Filter ${status} disposition categories should succeed`).toBeTruthy();
   }
 }

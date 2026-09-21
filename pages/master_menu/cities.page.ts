@@ -1,4 +1,4 @@
-import { Locator, Page, expect } from "@playwright/test";
+import { Locator, Page, Response, expect } from "@playwright/test";
 
 export class CitiesPage {
     readonly page: Page;
@@ -29,6 +29,11 @@ export class CitiesPage {
     }
 
     async searchCity(name: string) {
+        if (await this.searchInput.inputValue() === name) {
+            await this.page.locator('.table-section-loader-overlay').waitFor({ state: 'hidden' });
+            await expect(this.cityRow(name)).toBeVisible();
+            return;
+        }
         const searchResponse = this.page.waitForResponse((response) => {
             const url = new URL(response.url());
             return response.request().method() === 'GET' &&
@@ -45,6 +50,22 @@ export class CitiesPage {
         return this.page.getByRole('row').filter({
             has: this.page.getByRole('cell', { name, exact: true }),
         });
+    }
+
+    private waitForCityMutation(): Promise<Response> {
+        return this.page.waitForResponse((response) => {
+            const { pathname } = new URL(response.url());
+            return response.request().method() !== 'GET' &&
+                /^\/api\/v1\/cities(?:\/|$)/.test(pathname);
+        });
+    }
+
+    private async expectSuccessful(
+        responsePromise: Promise<Response>,
+        operation: string,
+    ): Promise<void> {
+        const response = await responsePromise;
+        expect(response.ok(), `${operation} API request should succeed`).toBeTruthy();
     }
 
     async addCity(name: string, countryName?: string, stateName?: string) {
@@ -71,14 +92,18 @@ export class CitiesPage {
             await this.page.locator('.ccl-dropdown__option').first().click();
         }
 
+        const response = this.waitForCityMutation();
         await this.saveButton.click();
+        await this.expectSuccessful(response, 'Create city');
     }
 
     async editCity(currentName: string, updatedName: string) {
         await this.cityRow(currentName).getByTitle('Edit', { exact: true }).click();
         await expect(this.cityName).toHaveValue(currentName);
         await this.cityName.fill(updatedName);
+        const response = this.waitForCityMutation();
         await this.saveButton.click();
+        await this.expectSuccessful(response, 'Update city');
     }
 
     async deleteCity(name?: string) {
@@ -87,7 +112,9 @@ export class CitiesPage {
         }
         const row = this.cityRow(name!);
         await row.getByTitle('Deactivate', { exact: true }).click();
+        const response = this.waitForCityMutation();
         await this.page.getByRole('button', { name: 'Yes' }).click();
+        await this.expectSuccessful(response, 'Deactivate city');
         await expect(row).toBeHidden();
     }
 
@@ -110,7 +137,9 @@ export class CitiesPage {
         await this.page.locator('.page-loader-overlay').waitFor({ state: 'hidden' });
         const row = this.cityRow(name!);
         await row.getByTitle('Restore', { exact: true }).click();
+        const response = this.waitForCityMutation();
         await this.page.getByRole('button', { name: 'Yes' }).click();
+        await this.expectSuccessful(response, 'Restore city');
         await expect(row).toBeHidden();
     }
 }

@@ -278,17 +278,21 @@ export class LeadsPage {
         const dialog = this.page.getByRole('dialog', { name: /Reassign/i });
         await expect(dialog).toBeVisible();
 
-        const agentTrigger = dialog.locator('.ccl-dropdown__trigger');
-        await expect(agentTrigger).toHaveCount(1);
+        const agentTrigger = dialog.getByText('Select new agent', { exact: true });
+        await expect(agentTrigger).toBeVisible();
         await agentTrigger.click();
-        const searchInput = this.page.locator('.ccl-dropdown__search-input:visible');
-        if (await searchInput.isVisible()) {
-            await searchInput.fill(agentLabel);
-        }
-        const agentOption = this.page
-            .locator('.ccl-dropdown__option:not(.disabled)')
-            .filter({ hasText: agentLabel });
+
+        const agentSearch = this.page
+            .getByRole('textbox', { name: 'Search', exact: true })
+            .last();
+        await expect(agentSearch).toBeVisible();
+        await agentSearch.fill(agentLabel);
+
+        // The option includes the agent's surname and role, for example
+        // "AgentABC QA (Agent)", while callers provide the unique first name.
+        const agentOption = this.page.getByText(agentLabel, { exact: false });
         await expect(agentOption).toHaveCount(1);
+        await expect(agentOption).toBeVisible();
         await agentOption.click();
 
         await dialog

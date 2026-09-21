@@ -24,17 +24,16 @@ test.describe('Cities Module - CRUD & Lifecycle', () => {
 
     await citiesPage.gotoCitiesPage();
     await citiesPage.addCity(uniqueCityName, EXISTING_COUNTRY, EXISTING_STATE);
-    await expect(page.getByText('City created successfully')).toBeVisible();
 
     await citiesPage.searchCity(uniqueCityName);
     await expect(page.getByRole('cell', { name: uniqueCityName })).toBeVisible();
 
     const updatedCityName = `${uniqueCityName} updated`;
     await citiesPage.editCity(uniqueCityName, updatedCityName);
-    await expect(page.getByText('City updated successfully')).toBeVisible();
+    await citiesPage.searchCity(updatedCityName);
+    await expect(citiesPage.cityRow(updatedCityName)).toBeVisible();
 
     await citiesPage.deleteCity(updatedCityName);
-    await expect(page.getByText('City deactivated')).toBeVisible();
 
     await citiesPage.filterByStatus('Inactive');
     await citiesPage.searchCity(updatedCityName);
@@ -56,12 +55,16 @@ test.describe('Cities Module - CRUD & Lifecycle', () => {
 
     await citiesPage.gotoCitiesPage();
     await citiesPage.addCity(uniqueCityName, EXISTING_COUNTRY, EXISTING_STATE);
-    await expect(page.getByText('City created successfully')).toBeVisible();
+    await citiesPage.searchCity(uniqueCityName);
+    await expect(citiesPage.cityRow(uniqueCityName)).toBeVisible();
     await citiesPage.deleteCity(uniqueCityName);
-    await expect(page.getByText('City deactivated')).toBeVisible();
 
     await citiesPage.filterByStatus('Inactive');
+    await citiesPage.searchCity(uniqueCityName);
+    await expect(citiesPage.cityRow(uniqueCityName)).toBeVisible();
     await citiesPage.restoreCity(uniqueCityName);
-    await expect(page.getByText('City restored successfully')).toBeVisible();
+    await citiesPage.filterByStatus('Active');
+    await citiesPage.searchCity(uniqueCityName);
+    await expect(citiesPage.cityRow(uniqueCityName)).toBeVisible();
   });
 });
